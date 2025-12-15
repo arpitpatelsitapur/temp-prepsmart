@@ -1,5 +1,4 @@
 import streamlit as st
-import os
 import time
 import threading
 from deepgram import (
@@ -11,15 +10,14 @@ from deepgram import (
 from groq import Groq
 from dotenv import load_dotenv
 import requests
-from playsound import playsound
+# from playsound import playsound
 import logging 
 from utils.topic_page import *
 from utils.topic_to_quiz import *
 
 # ✅ Load environment variables
-load_dotenv()
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+DEEPGRAM_API_KEY = st.secrets["DEEPGRAM_API_KEY"]
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
 # ✅ Streamlit Page Configuration
 st.set_page_config(
@@ -51,6 +49,10 @@ if 'page' not in st.session_state:
         'generating': False,
         'start_time': 0
     })
+
+# 🔓 Audio unlock state
+if "audio_unlocked" not in st.session_state:
+    st.session_state.audio_unlocked = False
 
 def display_question():
     idx = st.session_state.current_question
@@ -105,7 +107,10 @@ def gradual_display_inside_div(text, role, delay=0.15):
 
 # ✅ Function for Deepgram TTS (run in a separate thread)
 def text_to_speech(text: str, filename: str = "response_audio.wav"):
-    """Convert text to speech using Deepgram."""
+    """Convert text to speech using Deepgram and stream via browser."""
+    if not st.session_state.audio_unlocked:
+        return  # 🔐 Respect browser rule
+
     url = "https://api.deepgram.com/v1/speak"
     headers = {
         "Authorization": f"Token {DEEPGRAM_API_KEY}",
@@ -116,13 +121,18 @@ def text_to_speech(text: str, filename: str = "response_audio.wav"):
     try:
         response = requests.post(url, headers=headers, json=payload)
         if response.status_code != 200:
-            print("Error:", response.status_code, response.text)
+            st.error("TTS failed")
             return
-        with open(filename, 'wb') as audio_file:
-            audio_file.write(response.content)
 
-        # ✅ Play the audio file
-        playsound(filename)
+        with open(filename, "wb") as f:
+            f.write(response.content)
+
+        # ✅ Browser-based audio playback
+        with open(filename, "rb") as audio_file:
+            st.audio(audio_file.read(), format="audio/wav", autoplay=True)
+
+    except Exception as e:
+        st.error(f"TTS Error: {e}")
 
     except Exception as e:
         st.error(f"Error handling audio: {str(e)}")
@@ -454,19 +464,38 @@ elif source == "Topic to Quiz":
 elif source == "Voice-to-Voice":
     st.title("🎙️ AI-Powered Interview Bot")
     st.write("Speak to the bot and get instant technical interview responses.")
+
+    # 🔓 One-time unlock
+    if not st.session_state.audio_unlocked:
+        if st.button("🎤 Start Interview"):
+            st.session_state.audio_unlocked = True
+            st.success("Audio enabled. Interview starting...")
+            st.rerun()
+        st.stop()
+
+    # ✅ Interview starts AFTER unlock
     if st.button("New Conversation"):
-        welcome_message = "Hello, I am an AI Model designed to help you with interview preparation. Tell me about yourself."
+        welcome_message = (
+            "Hello, I am an AI Model designed to help you with interview preparation. "
+            "Tell me about yourself."
+        )
         parallel_display_and_speak(welcome_message, "llm")
+
         while True:
             transcript = speech_to_text()
+
             if not transcript:
-                st.error("❌ No speech detected or Deepgram connection error.")
+                st.error("❌ No speech detected.")
                 continue
+
             parallel_display_and_speak(transcript, "user")
+
             llm_response = generate_response(transcript)
             parallel_display_and_speak(llm_response, "llm")
-            if "exit" in transcript.lower() or "quit" in transcript.lower() or "stop" in transcript.lower() or "bye" in transcript.lower():
+
+            if any(word in transcript.lower() for word in ["exit", "quit", "stop", "bye"]):
                 break
+                
     with st.expander("ℹ️ How to Use, Technologies & Cautions", expanded=False):
         st.markdown("""
     ### 💡 How to Use:
