@@ -6,7 +6,6 @@ openai
 frontend
 tools
 requests
-playsound
 httpx
 deepgram-sdk
 python-dotenv
