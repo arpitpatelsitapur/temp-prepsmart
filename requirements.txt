@@ -9,5 +9,4 @@ requests
 httpx
 deepgram-sdk
 python-dotenv
-pyaudio
 groq
