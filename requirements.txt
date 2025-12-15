@@ -1,0 +1,14 @@
+streamlit
+pandas
+numpy
+fitz
+openai
+frontend
+tools
+requests
+playsound
+httpx
+deepgram-sdk
+python-dotenv
+pyaudio
+groq
